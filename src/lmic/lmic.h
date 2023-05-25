@@ -509,6 +509,7 @@ struct lmic_t {
     u4_t        seqnoDn;      // device level down stream seqno
     u4_t        seqnoUp;
     u4_t        dn2Freq;
+    //u4_t  uwePlannedDelay_ms; /* debugging: how many milliseconds to the next transmission */
 
 #if !defined(DISABLE_BEACONS)
     ostime_t    bcnRxtime;
@@ -643,6 +644,10 @@ struct lmic_t {
 
     u1_t        noRXIQinversion;
     u1_t        saveIrqFlags;   // last LoRa IRQ flags
+    //u1_t        uwedebug1;
+    //u1_t        uwedebug2;
+    //u1_t        uwedebug3;
+    //u1_t        uwedebug4;
 };
 
 //! \var struct lmic_t LMIC
@@ -680,6 +685,8 @@ lmic_tx_error_t LMIC_setTxData2_strict(u1_t port, xref2u1_t data, u1_t dlen, u1_
 lmic_tx_error_t LMIC_sendWithCallback(u1_t port, xref2u1_t data, u1_t dlen, u1_t confirmed, lmic_txmessage_cb_t *pCb, void *pUserData);
 lmic_tx_error_t LMIC_sendWithCallback_strict(u1_t port, xref2u1_t data, u1_t dlen, u1_t confirmed, lmic_txmessage_cb_t *pCb, void *pUserData);
 void  LMIC_sendAlive    (void);
+
+void LMIC_uwe_setDebugCallback(void *p);
 
 #if !defined(DISABLE_BEACONS)
 bit_t LMIC_enableTracking  (u1_t tryBcnInfo);

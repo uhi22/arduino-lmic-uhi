@@ -30,6 +30,9 @@
 
 #include "lmic_bandplan.h"
 
+extern void (*uweDebugCallback)(unsigned char); /* xxx */
+u1_t uwe_loops;
+
 #if defined(CFG_eu868)
 // ================================================================================
 //
@@ -206,30 +209,42 @@ ostime_t LMICeu868_nextJoinTime(ostime_t time) {
 
 ostime_t LMICeu868_nextTx(ostime_t now) {
         u1_t bmap = 0xF;
+	uwe_loops=0;
         do {
                 ostime_t mintime = now + /*8h*/sec2osticks(28800);
                 u1_t band = 0;
+                uweDebugCallback(80);
                 for (u1_t bi = 0; bi<4; bi++) {
                         if ((bmap & (1 << bi)) && mintime - LMIC.bands[bi].avail > 0)
                                 mintime = LMIC.bands[band = bi].avail;
                 }
+                uweDebugCallback(81);
+                uweDebugCallback(band);
+
                 // Find next channel in given band
                 u1_t chnl = LMIC.bands[band].lastchnl;
                 for (u1_t ci = 0; ci<MAX_CHANNELS; ci++) {
+                        uweDebugCallback(82);
                         if ((chnl = (chnl + 1)) >= MAX_CHANNELS)
                                 chnl -= MAX_CHANNELS;
                         if ((LMIC.channelMap & (1 << chnl)) != 0 &&  // channel enabled
                                 (LMIC.channelDrMap[chnl] & (1 << (LMIC.datarate & 0xF))) != 0 &&
                                 band == (LMIC.channelFreq[chnl] & 0x3)) { // in selected band
+                                uweDebugCallback(83);
+                                uweDebugCallback(chnl);
                                 LMIC.txChnl = LMIC.bands[band].lastchnl = chnl;
                                 return mintime;
                         }
                 }
                 if ((bmap &= ~(1 << band)) == 0) {
                         // No feasible channel  found!
+                        uweDebugCallback(88); /* we should never reach this */
                         return mintime;
                 }
-        } while (1);
+                uwe_loops++;
+        } while (uwe_loops<10);
+        uweDebugCallback(89); /* we should never reach this */
+        return now;
 }
 
 

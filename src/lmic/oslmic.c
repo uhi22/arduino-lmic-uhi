@@ -54,7 +54,26 @@ void os_init() {
 }
 
 ostime_t os_getTime () {
-    return hal_ticks();
+ /* Uwe: Bugfix to avoid wrap-around of the expired transmit-allowed-time */
+    ostime_t now;
+    u1_t i;
+    now = hal_ticks();
+
+    if ((LMIC.globalDutyAvail - now)<0) {
+      /* The globalDutyAvail is in the past. We need to avoid that it is too far in the past, because
+          the difference calculation will wrap-around if it is 9 hours in the past. We set it to "now",
+          this does not break anything, because it is expired anyway. */
+      LMIC.globalDutyAvail = now;
+    }
+ /* end bugfix 1 */
+
+ /* Uwe: Same bugfix also for the band-specific avail times */
+    for (i=0; i<4; i++) {
+      if ((LMIC.bands[i].avail - now)<0) { LMIC.bands[i].avail = now; }
+    }
+ /* end bugfix 2 */
+
+    return now;
 }
 
 // unlink job from queue, return if removed

@@ -32,6 +32,8 @@
 #define LMIC_DR_LEGACY 0
 #include "lmic_bandplan.h"
 
+void (*uweDebugCallback)(unsigned char); /* xxx */
+
 #if defined(DISABLE_BEACONS) && !defined(DISABLE_PING)
 #error Ping needs beacon tracking
 #endif
@@ -1801,6 +1803,7 @@ static void processRx2DnData (xref2osjob_t osjob) {
         // BUG(tmm@mcci.com) this delay is not needed for some
         // regions, e.g. US915 and AU915, which have non-overlapping
         // uplink and downlink.
+        //LMIC.uwedebug1++;
         txDelay(os_getTime() + DNW2_SAFETY_ZONE, 2);
     }
     processDnData();
@@ -2300,6 +2303,7 @@ static bit_t processDnData_norx(void) {
 
             // TODO(tmm@mcci.com): check feasibility of lower datarate
             // Schedule another retransmission
+            //LMIC.uwedebug2++;
             txDelay(LMIC.rxtime, RETRY_PERIOD_secs);
             LMIC.opmode &= ~OP_TXRXPEND;
             engineUpdate();
@@ -2311,6 +2315,7 @@ static bit_t processDnData_norx(void) {
         if (LMIC.upRepeatCount < LMIC.upRepeat) {
             LMICOS_logEventUint32("processDnData: repeat", (LMIC.upRepeat<<8u) | (LMIC.upRepeatCount<<0u));
             LMIC.upRepeatCount += 1;
+            //LMIC.uwedebug3++;
             txDelay(os_getTime() + ms2osticks(LMICbandplan_TX_RECOVERY_ms), 0);
             LMIC.opmode &= ~OP_TXRXPEND;
             engineUpdate();
@@ -2359,6 +2364,7 @@ static bit_t processDnData_txcomplete(void) {
     // so that armies of identical devices will not try to talk all
     // at once. This is potentially band-specific, so we let it come
     // from the band-plan files.
+    //LMIC.uwedebug4++;
     txDelay(os_getTime() + ms2osticks(LMICbandplan_TX_RECOVERY_ms), 0);
 
 #if LMIC_ENABLE_DeviceTimeReq
@@ -2573,19 +2579,24 @@ static void engineUpdate_inner (void) {
 #endif // !DISABLE_BEACONS
 
     if( (LMIC.opmode & (OP_JOINING|OP_REJOIN|OP_TXDATA|OP_POLL)) != 0 ) {
+        if (LMIC.opmode | OP_TXDATA) uweDebugCallback(50);
         // Assuming txChnl points to channel which first becomes available again.
         bit_t jacc = ((LMIC.opmode & (OP_JOINING|OP_REJOIN)) != 0 ? 1 : 0);
         // Find next suitable channel and return availability time
         if( (LMIC.opmode & OP_NEXTCHNL) != 0 ) {
+            if (LMIC.opmode | OP_TXDATA) uweDebugCallback(51);
             txbeg = LMIC.txend = LMICbandplan_nextTx(now);
             LMIC.opmode &= ~OP_NEXTCHNL;
         } else {
             // no need to consider anything but LMIC.txend.
+            if (LMIC.opmode | OP_TXDATA) uweDebugCallback(52);
             txbeg = LMIC.txend;
         }
         // Delayed TX or waiting for duty cycle?
-        if( (LMIC.globalDutyRate != 0 || (LMIC.opmode & OP_RNDTX) != 0)  &&  (txbeg - LMIC.globalDutyAvail) < 0 )
+        if( (LMIC.globalDutyRate != 0 || (LMIC.opmode & OP_RNDTX) != 0)  &&  (txbeg - LMIC.globalDutyAvail) < 0 ) {
             txbeg = LMIC.globalDutyAvail;
+            uweDebugCallback(53);
+         }
 #if !defined(DISABLE_BEACONS)
         // If we're tracking a beacon...
         // then make sure TX-RX transaction is complete before beacon
@@ -2602,6 +2613,7 @@ static void engineUpdate_inner (void) {
         if( txbeg - (now + TX_RAMPUP) < 0 ) {
             // We could send right now!
             txbeg = now;
+            uweDebugCallback(54);
             dr_t txdr = (dr_t)LMIC.datarate;
 #if !defined(DISABLE_JOIN)
             if( jacc ) {
@@ -2640,8 +2652,10 @@ static void engineUpdate_inner (void) {
                     // App code might do some stuff after send unaware of RESET.
                     goto reset;
                 }
+                uweDebugCallback(55);
                 if (! buildDataFrame()) {
                     // can't transmit this message. Report completion.
+                    uweDebugCallback(56);
                     initTxrxFlags(__func__, TXRX_LENERR);
                     if (LMIC.pendTxConf || LMIC.txCnt) {
                         orTxrxFlags(__func__, TXRX_NACK);
@@ -2659,8 +2673,11 @@ static void engineUpdate_inner (void) {
             LMICbandplan_updateTx(txbeg);
             // limit power to value asked in adr
             LMIC.radio_txpow = LMIC.txpow > LMIC.adrTxPow ? LMIC.adrTxPow : LMIC.txpow;
+            uweDebugCallback(57);
             reportEventNoUpdate(EV_TXSTART);
+            uweDebugCallback(58);
             os_radio(RADIO_TX);
+            uweDebugCallback(59);
             return;
         }
         // Cannot yet TX
@@ -2725,6 +2742,7 @@ static void engineUpdate_inner (void) {
                        e_.info   = osticks2ms(txbeg-now),
                        e_.info2  = LMIC.seqnoUp-1));
     LMIC_X_DEBUG_PRINTF("%"LMIC_PRId_ostime_t": next engine update in %"LMIC_PRId_ostime_t"\n", now, txbeg-TX_RAMPUP);
+    //LMIC.uwePlannedDelay_ms = osticks2ms(txbeg-now);
     os_setTimedCallback(&LMIC.osjob, txbeg-TX_RAMPUP, FUNC_ADDR(runEngineUpdate));
 }
 
@@ -2901,6 +2919,10 @@ void LMIC_setTxData (void) {
     LMIC_setTxData_strict();
 }
 
+void LMIC_uwe_setDebugCallback(void *p) { /* xxx */
+  uweDebugCallback=p;
+}
+
 void LMIC_setTxData_strict (void) {
     LMICOS_logEventUint32(__func__, ((u4_t)LMIC.pendTxPort << 24u) | ((u4_t)LMIC.pendTxConf << 16u) | (LMIC.pendTxLen << 0u));
     LMIC.opmode |= OP_TXDATA;
@@ -2908,13 +2930,17 @@ void LMIC_setTxData_strict (void) {
         LMIC.txCnt = 0;             // reset the confirmed uplink FSM
         LMIC.upRepeatCount = 0;     // reset the unconfirmed repeat FSM
     }
+    uweDebugCallback(40);
     engineUpdate();
 }
 
+ 
 
 // send a message, attempting to adjust TX data rate
 lmic_tx_error_t LMIC_setTxData2 (u1_t port, xref2u1_t data, u1_t dlen, u1_t confirmed) {
     adjustDrForFrameIfNotBusy(dlen);
+    //Serial.println(F("B")); Serial.flush();
+    uweDebugCallback(20);
     return LMIC_setTxData2_strict(port, data, dlen, confirmed);
 }
 
@@ -2924,10 +2950,12 @@ lmic_tx_error_t LMIC_setTxData2_strict (u1_t port, xref2u1_t data, u1_t dlen, u1
         // already have a message queued
         return LMIC_ERROR_TX_BUSY;
     }
+    uweDebugCallback(30);
     if( dlen > SIZEOFEXPR(LMIC.pendTxData) )
         return LMIC_ERROR_TX_TOO_LARGE;
     if( data != (xref2u1_t)0 )
         os_copyMem(LMIC.pendTxData, data, dlen);
+    uweDebugCallback(31);
     LMIC.pendTxConf = confirmed;
     LMIC.pendTxPort = port;
     LMIC.pendTxLen  = dlen;
